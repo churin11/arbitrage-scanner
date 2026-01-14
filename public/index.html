@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbitrage Scanner | Opinion ↔ Probable</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #1a1a24;
+            --bg-hover: #22222e;
+            --accent-opinion: #00d4aa;
+            --accent-probable: #ff6b35;
+            --accent-profit: #00ff88;
+            --accent-warning: #ffaa00;
+            --text-primary: #ffffff;
+            --text-secondary: #8888aa;
+            --text-muted: #555566;
+            --border-color: #2a2a3a;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .bg-grid {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-glow {
+            position: fixed;
+            width: 600px; height: 600px;
+            border-radius: 50%;
+            filter: blur(150px);
+            opacity: 0.12;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-glow.opinion { top: -200px; left: -200px; background: var(--accent-opinion); }
+        .bg-glow.probable { bottom: -200px; right: -200px; background: var(--accent-probable); }
+
+        .header {
+            position: relative;
+            z-index: 10;
+            padding: 20px 30px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(10, 10, 15, 0.9);
+            backdrop-filter: blur(20px);
+        }
+
+        .logo { display: flex; align-items: center; gap: 15px; }
+
+        .logo-icon {
+            width: 45px; height: 45px;
+            background: linear-gradient(135deg, #00ff88 0%, #00cc66 100%);
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; font-weight: 700;
+        }
+
+        .logo-text h1 { font-size: 22px; font-weight: 700; }
+        .logo-text p { font-size: 12px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+
+        .header-status { display: flex; align-items: center; gap: 15px; }
+
+        .status-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 14px;
+            background: var(--bg-card);
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
+        .status-dot.online { background: var(--accent-profit); box-shadow: 0 0 10px var(--accent-profit); animation: pulse 2s infinite; }
+        .status-dot.offline { background: #ff4444; }
+
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        .container { position: relative; z-index: 10; max-width: 1600px; margin: 0 auto; padding: 25px; }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 25px; }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover { transform: translateY(-2px); border-color: var(--accent-opinion); }
+        .stat-card.opinion { border-left: 3px solid var(--accent-opinion); }
+        .stat-card.probable { border-left: 3px solid var(--accent-probable); }
+        .stat-card.opportunities { border-left: 3px solid var(--accent-profit); }
+        .stat-card.roi { border-left: 3px solid var(--accent-warning); }
+
+        .stat-label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .stat-value { font-size: 32px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+
+        .stat-card.opinion .stat-value { color: var(--accent-opinion); }
+        .stat-card.probable .stat-value { color: var(--accent-probable); }
+        .stat-card.opportunities .stat-value { color: var(--accent-profit); }
+        .stat-card.roi .stat-value { color: var(--accent-warning); }
+
+        .stat-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 5px; }
+
+        .controls { display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap; align-items: center; }
+
+        .control-group {
+            display: flex; align-items: center; gap: 10px;
+            background: var(--bg-card);
+            padding: 10px 15px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+        }
+
+        .control-label { font-size: 12px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+
+        .control-input {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            width: 80px;
+        }
+
+        .control-input:focus { outline: none; border-color: var(--accent-opinion); }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .btn-primary { background: linear-gradient(135deg, #00ff88 0%, #00cc66 100%); color: #000; }
+        .btn-primary:hover { transform: scale(1.02); box-shadow: 0 5px 20px rgba(0, 255, 136, 0.3); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+        .btn-secondary { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); }
+        .btn-secondary:hover { background: var(--bg-hover); border-color: var(--accent-opinion); }
+        .btn-secondary.active { background: var(--accent-opinion); color: #000; border-color: var(--accent-opinion); }
+
+        .category-tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+
+        .tab {
+            padding: 10px 18px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .tab:hover { border-color: var(--accent-opinion); }
+        .tab.active { background: var(--accent-opinion); color: #000; border-color: var(--accent-opinion); }
+        .tab-count { margin-left: 6px; opacity: 0.7; }
+
+        .table-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .table-header {
+            display: grid;
+            grid-template-columns: 2.5fr 1fr 1fr 1fr 0.8fr 100px;
+            padding: 15px 20px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .table-body { max-height: 550px; overflow-y: auto; }
+
+        .table-row {
+            display: grid;
+            grid-template-columns: 2.5fr 1fr 1fr 1fr 0.8fr 100px;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+
+        .table-row:hover { background: var(--bg-hover); }
+        .table-row:last-child { border-bottom: none; }
+
+        .market-info { display: flex; flex-direction: column; gap: 4px; }
+        .market-title { font-size: 14px; font-weight: 500; line-height: 1.4; }
+        .market-meta { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+        .market-tag { display: inline-block; padding: 2px 8px; background: var(--bg-secondary); border-radius: 4px; font-size: 10px; margin-right: 5px; }
+
+        .price-cell { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; }
+        .price-cell.opinion { color: var(--accent-opinion); }
+        .price-cell.probable { color: var(--accent-probable); }
+
+        .roi-badge {
+            display: inline-flex; align-items: center;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 13px; font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .roi-badge.high { background: rgba(0, 255, 136, 0.2); color: var(--accent-profit); }
+        .roi-badge.medium { background: rgba(255, 170, 0, 0.2); color: var(--accent-warning); }
+        .roi-badge.low { background: rgba(136, 136, 170, 0.2); color: var(--text-secondary); }
+
+        .match-score { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-secondary); }
+
+        .action-btn {
+            padding: 8px 16px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .action-btn:hover { border-color: var(--accent-opinion); color: var(--accent-opinion); }
+
+        .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; color: var(--text-secondary); }
+
+        .spinner {
+            width: 40px; height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-opinion);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+        .empty-state-icon { font-size: 48px; margin-bottom: 15px; opacity: 0.5; }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center; justify-content: center;
+        }
+
+        .modal-overlay.active { display: flex; }
+
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-title { font-size: 18px; font-weight: 600; }
+        .modal-close { background: none; border: none; color: var(--text-secondary); font-size: 24px; cursor: pointer; }
+
+        .modal-section { margin-bottom: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 10px; }
+        .modal-section-title { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 10px; }
+        .modal-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .modal-label { color: var(--text-secondary); }
+        .modal-value { font-family: 'JetBrains Mono', monospace; }
+
+        .footer { text-align: center; padding: 20px; color: var(--text-muted); font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+
+        @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: 1fr; }
+            .table-header, .table-row { grid-template-columns: 1fr; gap: 10px; }
+            .header { flex-direction: column; gap: 15px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+    <div class="bg-glow opinion"></div>
+    <div class="bg-glow probable"></div>
+
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">⚡</div>
+            <div class="logo-text">
+                <h1>Arbitrage Scanner</h1>
+                <p>Opinion ↔ Probable</p>
+            </div>
+        </div>
+        <div class="header-status">
+            <div class="status-item">
+                <span class="status-dot" id="opinionStatus"></span>
+                <span>Opinion</span>
+            </div>
+            <div class="status-item">
+                <span class="status-dot" id="probableStatus"></span>
+                <span>Probable</span>
+            </div>
+            <div class="status-item" id="lastUpdate">Last update: -</div>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="stats-grid">
+            <div class="stat-card opinion">
+                <div class="stat-label">Opinion Markets</div>
+                <div class="stat-value" id="opinionCount">-</div>
+                <div class="stat-subtitle">Active markets</div>
+            </div>
+            <div class="stat-card probable">
+                <div class="stat-label">Probable Markets</div>
+                <div class="stat-value" id="probableCount">-</div>
+                <div class="stat-subtitle">Active markets</div>
+            </div>
+            <div class="stat-card opportunities">
+                <div class="stat-label">Opportunities</div>
+                <div class="stat-value" id="opportunityCount">0</div>
+                <div class="stat-subtitle">Found matches</div>
+            </div>
+            <div class="stat-card roi">
+                <div class="stat-label">Best ROI</div>
+                <div class="stat-value" id="bestRoi">-</div>
+                <div class="stat-subtitle">Potential return</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <span class="control-label">Min ROI:</span>
+                <input type="number" class="control-input" id="minRoi" value="1" step="0.5">
+                <span class="control-label">%</span>
+            </div>
+            <div class="control-group">
+                <span class="control-label">Min Match:</span>
+                <input type="number" class="control-input" id="minMatch" value="60" step="5">
+                <span class="control-label">%</span>
+            </div>
+            <button class="btn btn-primary" id="scanBtn" onclick="scanMarkets()">🔍 Scan Now</button>
+            <button class="btn btn-secondary" id="autoBtn" onclick="toggleAuto()">Auto: OFF</button>
+            <button class="btn btn-secondary" onclick="refreshData()">↻ Refresh</button>
+        </div>
+
+        <div class="category-tabs" id="categoryTabs">
+            <div class="tab active" data-category="all">All <span class="tab-count" id="countAll">0</span></div>
+            <div class="tab" data-category="crypto">Crypto <span class="tab-count" id="countCrypto">0</span></div>
+            <div class="tab" data-category="politics">Politics <span class="tab-count" id="countPolitics">0</span></div>
+            <div class="tab" data-category="sports">Sports <span class="tab-count" id="countSports">0</span></div>
+            <div class="tab" data-category="finance">Finance <span class="tab-count" id="countFinance">0</span></div>
+            <div class="tab" data-category="other">Other <span class="tab-count" id="countOther">0</span></div>
+        </div>
+
+        <div class="table-container">
+            <div class="table-header">
+                <div>Market</div>
+                <div>Opinion</div>
+                <div>Probable</div>
+                <div>ROI</div>
+                <div>Match</div>
+                <div>Action</div>
+            </div>
+            <div class="table-body" id="tableBody">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <div>Loading markets...</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        Built for prediction market arbitrage | Data from Opinion & Probable APIs
+    </footer>
+
+    <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title" id="modalTitle">Market Details</div>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modalContent"></div>
+        </div>
+    </div>
+
+    <script>
+        let state = {
+            opinionMarkets: [],
+            probableMarkets: [],
+            opportunities: [],
+            filteredOpportunities: [],
+            autoScan: false,
+            autoInterval: null,
+            currentCategory: 'all'
+        };
+
+        function similarity(s1, s2) {
+            s1 = s1.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+            s2 = s2.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+            
+            const words1 = s1.split(/\s+/).filter(w => w.length > 2);
+            const words2 = s2.split(/\s+/).filter(w => w.length > 2);
+            
+            if (words1.length === 0 || words2.length === 0) return 0;
+            
+            let matches = 0;
+            for (const w1 of words1) {
+                for (const w2 of words2) {
+                    if (w1 === w2 || w1.includes(w2) || w2.includes(w1)) {
+                        matches++;
+                        break;
+                    }
+                }
+            }
+            
+            return (matches / Math.max(words1.length, words2.length)) * 100;
+        }
+
+        function categorize(title, tags) {
+            const t = title.toLowerCase();
+            const tagLabels = tags.map(tag => (tag.label || tag.slug || '').toLowerCase());
+            
+            if (t.includes('btc') || t.includes('eth') || t.includes('bitcoin') || 
+                t.includes('crypto') || t.includes('bnb') || t.includes('sol') ||
+                tagLabels.includes('crypto')) {
+                return 'crypto';
+            }
+            if (t.includes('trump') || t.includes('biden') || t.includes('election') || 
+                t.includes('president') || t.includes('congress') || tagLabels.includes('politics')) {
+                return 'politics';
+            }
+            if (t.includes('nba') || t.includes('nfl') || t.includes('mlb') || 
+                t.includes('game') || t.includes('match') || tagLabels.includes('sports')) {
+                return 'sports';
+            }
+            if (t.includes('stock') || t.includes('price') || t.includes('ipo') || 
+                t.includes('gold') || t.includes('msft') || t.includes('fed') ||
+                tagLabels.includes('finance') || tagLabels.includes('stock')) {
+                return 'finance';
+            }
+            return 'other';
+        }
+
+        async function fetchData() {
+            try {
+                const response = await fetch('/api/scan');
+                if (!response.ok) throw new Error('Server error');
+                return await response.json();
+            } catch (error) {
+                console.error('Fetch error:', error);
+                return null;
+            }
+        }
+
+        async function fetchOpinionPrice(tokenId) {
+            try {
+                const response = await fetch(`/api/opinion/price/${tokenId}`);
+                if (!response.ok) return null;
+                const data = await response.json();
+                if (data.code === 0 && data.result) {
+                    return parseFloat(data.result.price);
+                }
+                return null;
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function updateStatus(id, online) {
+            const el = document.getElementById(id);
+            el.className = 'status-dot ' + (online ? 'online' : 'offline');
+        }
+
+        function updateStats() {
+            document.getElementById('opinionCount').textContent = state.opinionMarkets.length;
+            document.getElementById('probableCount').textContent = state.probableMarkets.length;
+            document.getElementById('opportunityCount').textContent = state.opportunities.length;
+            
+            if (state.opportunities.length > 0) {
+                const best = Math.max(...state.opportunities.map(o => o.roi));
+                document.getElementById('bestRoi').textContent = best.toFixed(1) + '%';
+            } else {
+                document.getElementById('bestRoi').textContent = '-';
+            }
+        }
+
+        function updateCounts() {
+            const counts = { all: 0, crypto: 0, politics: 0, sports: 0, finance: 0, other: 0 };
+            
+            state.opportunities.forEach(opp => {
+                counts.all++;
+                counts[opp.category]++;
+            });
+            
+            document.getElementById('countAll').textContent = counts.all;
+            document.getElementById('countCrypto').textContent = counts.crypto;
+            document.getElementById('countPolitics').textContent = counts.politics;
+            document.getElementById('countSports').textContent = counts.sports;
+            document.getElementById('countFinance').textContent = counts.finance;
+            document.getElementById('countOther').textContent = counts.other;
+        }
+
+        async function findOpportunities() {
+            const minRoi = parseFloat(document.getElementById('minRoi').value) || 1;
+            const minMatch = parseFloat(document.getElementById('minMatch').value) || 60;
+            
+            state.opportunities = [];
+            
+            for (const opinion of state.opinionMarkets) {
+                const opinionTitle = opinion.marketTitle || '';
+                
+                for (const probable of state.probableMarkets) {
+                    const probableTitle = probable.question || probable.eventTitle || '';
+                    
+                    const matchScore = similarity(opinionTitle, probableTitle);
+                    
+                    if (matchScore >= minMatch) {
+                        let opinionPrice = null;
+                        if (opinion.yesTokenId) {
+                            opinionPrice = await fetchOpinionPrice(opinion.yesTokenId);
+                        }
+                        
+                        let probablePrice = null;
+                        if (probable.tokens) {
+                            const yesToken = probable.tokens.find(t => t.outcome === 'Yes');
+                            if (yesToken && yesToken.price) {
+                                probablePrice = parseFloat(yesToken.price.BUY);
+                            }
+                        }
+                        
+                        if (opinionPrice && probablePrice) {
+                            const diff = Math.abs(opinionPrice - probablePrice);
+                            const avg = (opinionPrice + probablePrice) / 2;
+                            const roi = avg > 0 ? (diff / avg) * 100 : 0;
+                            
+                            if (roi >= minRoi) {
+                                const category = categorize(opinionTitle, probable.eventTags || []);
+                                
+                                state.opportunities.push({
+                                    opinion,
+                                    probable,
+                                    opinionPrice,
+                                    probablePrice,
+                                    roi,
+                                    matchScore,
+                                    category,
+                                    direction: opinionPrice > probablePrice ? 'buy_probable' : 'buy_opinion'
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            
+            state.opportunities.sort((a, b) => b.roi - a.roi);
+        }
+
+        function filterByCategory() {
+            if (state.currentCategory === 'all') {
+                state.filteredOpportunities = [...state.opportunities];
+            } else {
+                state.filteredOpportunities = state.opportunities.filter(
+                    o => o.category === state.currentCategory
+                );
+            }
+            renderTable();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            
+            if (state.filteredOpportunities.length === 0) {
+                tbody.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <div>No arbitrage opportunities found</div>
+                        <div style="margin-top:10px;font-size:12px">Try lowering the match threshold</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            tbody.innerHTML = state.filteredOpportunities.map((opp, idx) => {
+                const roiClass = opp.roi >= 10 ? 'high' : opp.roi >= 5 ? 'medium' : 'low';
+                const direction = opp.direction === 'buy_probable' 
+                    ? '📈 Buy Probable, Sell Opinion' 
+                    : '📈 Buy Opinion, Sell Probable';
+                
+                return `
+                <div class="table-row">
+                    <div class="market-info">
+                        <div class="market-title">${opp.opinion.marketTitle}</div>
+                        <div class="market-meta">
+                            <span class="market-tag">${opp.category}</span>
+                            ${direction}
+                        </div>
+                    </div>
+                    <div class="price-cell opinion">${(opp.opinionPrice * 100).toFixed(1)}¢</div>
+                    <div class="price-cell probable">${(opp.probablePrice * 100).toFixed(1)}¢</div>
+                    <div><span class="roi-badge ${roiClass}">+${opp.roi.toFixed(1)}%</span></div>
+                    <div class="match-score">${opp.matchScore.toFixed(0)}%</div>
+                    <div><button class="action-btn" onclick="showDetails(${idx})">Details</button></div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        function showDetails(idx) {
+            const opp = state.filteredOpportunities[idx];
+            
+            document.getElementById('modalTitle').textContent = 'Arbitrage Opportunity';
+            document.getElementById('modalContent').innerHTML = `
+                <div class="modal-section">
+                    <div class="modal-section-title">Opinion Market</div>
+                    <div class="modal-row">
+                        <span class="modal-label">Title:</span>
+                        <span class="modal-value">${opp.opinion.marketTitle}</span>
+                    </div>
+                    <div class="modal-row">
+                        <span class="modal-label">Yes Price:</span>
+                        <span class="modal-value" style="color:var(--accent-opinion)">${(opp.opinionPrice * 100).toFixed(2)}¢</span>
+                    </div>
+                    <div class="modal-row">
+                        <span class="modal-label">Volume:</span>
+                        <span class="modal-value">$${parseFloat(opp.opinion.volume || 0).toLocaleString()}</span>
+                    </div>
+                </div>
+                
+                <div class="modal-section">
+                    <div class="modal-section-title">Probable Market</div>
+                    <div class="modal-row">
+                        <span class="modal-label">Title:</span>
+                        <span class="modal-value">${opp.probable.question || opp.probable.eventTitle}</span>
+                    </div>
+                    <div class="modal-row">
+                        <span class="modal-label">Yes Price:</span>
+                        <span class="modal-value" style="color:var(--accent-probable)">${(opp.probablePrice * 100).toFixed(2)}¢</span>
+                    </div>
+                    <div class="modal-row">
+                        <span class="modal-label">Volume:</span>
+                        <span class="modal-value">$${parseFloat(opp.probable.volume24hr || 0).toLocaleString()}</span>
+                    </div>
+                </div>
+                
+                <div class="modal-section">
+                    <div class="modal-section-title">Arbitrage Analysis</div>
+                    <div class="modal-row">
+                        <span class="modal-label">Price Difference:</span>
+                        <span class="modal-value">${(Math.abs(opp.opinionPrice - opp.probablePrice) * 100).toFixed(2)}¢</span>
+                    </div>
+                    <div class="modal-row">
+                        <span class="modal-label">ROI:</span>
+                        <span class="modal-value" style="color:var(--accent-profit)">+${opp.roi.toFixed(2)}%</span>
+                    </div>
+                    <div class="modal-row">
+                        <span class="modal-label">Match Score:</span>
+                        <span class="modal-value">${opp.matchScore.toFixed(1)}%</span>
+                    </div>
+                    <div class="modal-row">
+                        <span class="modal-label">Strategy:</span>
+                        <span class="modal-value">${opp.direction === 'buy_probable' ? 'Buy on Probable, Sell on Opinion' : 'Buy on Opinion, Sell on Probable'}</span>
+                    </div>
+                </div>
+                
+                <div style="display:flex;gap:10px;margin-top:20px">
+                    <a href="https://opinion.trade" target="_blank" class="btn btn-secondary" style="flex:1;text-align:center;text-decoration:none">
+                        Open Opinion
+                    </a>
+                    <a href="https://probable.markets" target="_blank" class="btn btn-secondary" style="flex:1;text-align:center;text-decoration:none">
+                        Open Probable
+                    </a>
+                </div>
+            `;
+            
+            document.getElementById('modalOverlay').classList.add('active');
+        }
+
+        function closeModal(e) {
+            if (!e || e.target === document.getElementById('modalOverlay')) {
+                document.getElementById('modalOverlay').classList.remove('active');
+            }
+        }
+
+        async function scanMarkets() {
+            const btn = document.getElementById('scanBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Scanning...';
+            
+            document.getElementById('tableBody').innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <div>Fetching market data...</div>
+                </div>
+            `;
+            
+            const data = await fetchData();
+            
+            if (data && data.success) {
+                state.opinionMarkets = data.opinion.markets;
+                state.probableMarkets = data.probable.markets;
+                
+                updateStatus('opinionStatus', true);
+                updateStatus('probableStatus', true);
+                
+                document.getElementById('tableBody').innerHTML = `
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <div>Finding arbitrage opportunities...</div>
+                    </div>
+                `;
+                
+                await findOpportunities();
+                
+                updateStats();
+                updateCounts();
+                filterByCategory();
+                
+                document.getElementById('lastUpdate').textContent = 
+                    'Last update: ' + new Date().toLocaleTimeString();
+            } else {
+                updateStatus('opinionStatus', false);
+                updateStatus('probableStatus', false);
+                
+                document.getElementById('tableBody').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <div>Failed to fetch market data</div>
+                        <div style="margin-top:10px;font-size:12px">Check server connection</div>
+                    </div>
+                `;
+            }
+            
+            btn.disabled = false;
+            btn.textContent = '🔍 Scan Now';
+        }
+
+        function refreshData() { scanMarkets(); }
+
+        function toggleAuto() {
+            state.autoScan = !state.autoScan;
+            const btn = document.getElementById('autoBtn');
+            
+            if (state.autoScan) {
+                btn.classList.add('active');
+                btn.textContent = 'Auto: ON';
+                state.autoInterval = setInterval(scanMarkets, 60000);
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = 'Auto: OFF';
+                clearInterval(state.autoInterval);
+            }
+        }
+
+        document.getElementById('categoryTabs').addEventListener('click', e => {
+            const tab = e.target.closest('.tab');
+            if (!tab) return;
+            
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            state.currentCategory = tab.dataset.category;
+            filterByCategory();
+        });
+
+        document.addEventListener('DOMContentLoaded', scanMarkets);
+    </script>
+</body>
+</html>
